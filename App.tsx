@@ -1,43 +1,48 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
+import React from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
+import { ChatScreen } from './src/screens/ChatScreen';
+import { ModelScreen } from './src/screens/ModelScreen';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { StyleSheet } from 'react-native';
 
-import { NewAppScreen } from '@react-native/new-app-screen';
-import { StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
-import {
-  SafeAreaProvider,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
+import { LlamaProvider } from './src/context/LlamaContext';
 
-function App() {
-  const isDarkMode = useColorScheme() === 'dark';
+const Stack = createStackNavigator();
 
+const App = () => {
   return (
-    <SafeAreaProvider>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <AppContent />
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <SafeAreaProvider>
+        <LlamaProvider>
+          <NavigationContainer>
+            <Stack.Navigator 
+              initialRouteName="Chat"
+              screenOptions={{
+                headerShown: false,
+              }}
+            >
+              <Stack.Screen name="Chat" component={ChatScreen} />
+              <Stack.Screen 
+                name="Models" 
+                component={ModelScreen} 
+                options={{ 
+                  headerShown: true,
+                  title: 'Settings',
+                  headerBackTitle: 'Chat'
+                }}
+              />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </LlamaProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
-}
-
-function AppContent() {
-  const safeAreaInsets = useSafeAreaInsets();
-
-  return (
-    <View style={styles.container}>
-      <NewAppScreen
-        templateFileName="App.tsx"
-        safeAreaInsets={safeAreaInsets}
-      />
-    </View>
-  );
-}
+};
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
   },
 });
