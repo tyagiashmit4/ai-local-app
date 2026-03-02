@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import Markdown from 'react-native-markdown-display';
 import { Message } from '../services/LlamaService';
+import { theme } from '../styles/theme';
 
 interface ChatBubbleProps {
   message: Message;
@@ -16,23 +18,64 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message }) => {
     ]}>
       <View style={[
         styles.bubble, 
-        isUser ? styles.userBubble : styles.assistantBubble
+        isUser ? styles.userBubble : styles.assistantBubble,
+        theme.shadows.soft
       ]}>
-        <Text style={[
-          styles.text, 
-          isUser ? styles.userText : styles.assistantText
-        ]}>
-          {message.content}
-        </Text>
+        {isUser ? (
+          <Text style={styles.userText}>{message.content}</Text>
+        ) : (
+          <Markdown style={markdownStyles}>
+            {message.content}
+          </Markdown>
+        )}
       </View>
     </View>
   );
 };
 
+const markdownStyles = StyleSheet.create({
+  body: {
+    color: theme.colors.text,
+    fontSize: theme.typography.body.fontSize,
+    lineHeight: theme.typography.body.lineHeight,
+  },
+  paragraph: {
+    marginTop: 0,
+    marginBottom: 0,
+  },
+  code_inline: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    color: theme.colors.accent,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+  },
+  code_block: {
+    backgroundColor: '#000000',
+    color: theme.colors.success,
+    padding: 12,
+    borderRadius: 8,
+    marginVertical: 8,
+  },
+  fence: {
+    backgroundColor: '#000000',
+    color: theme.colors.success,
+    padding: 12,
+    borderRadius: 8,
+    marginVertical: 8,
+  },
+  link: {
+    color: theme.colors.primary,
+  },
+  strong: {
+    fontWeight: 'bold',
+    color: theme.colors.secondary,
+  }
+});
+
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 12,
-    marginVertical: 4,
+    paddingHorizontal: theme.spacing.md,
+    marginVertical: theme.spacing.xs,
     flexDirection: 'row',
   },
   userContainer: {
@@ -42,31 +85,22 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   bubble: {
-    maxWidth: '80%',
-    padding: 12,
-    borderRadius: 20,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
+    maxWidth: '85%',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm, // Reduced vertical padding for better harmony with text
+    borderRadius: theme.borderRadius.lg,
   },
   userBubble: {
-    backgroundColor: '#007AFF',
-    borderBottomRightRadius: 4,
+    backgroundColor: theme.colors.userBubble,
+    borderBottomRightRadius: theme.borderRadius.xs,
   },
   assistantBubble: {
-    backgroundColor: '#E9E9EB',
-    borderBottomLeftRadius: 4,
-  },
-  text: {
-    fontSize: 16,
-    lineHeight: 22,
+    backgroundColor: theme.colors.assistantBubble,
+    borderBottomLeftRadius: theme.borderRadius.xs,
   },
   userText: {
     color: '#FFFFFF',
-  },
-  assistantText: {
-    color: '#000000',
+    fontSize: theme.typography.body.fontSize,
+    lineHeight: theme.typography.body.lineHeight,
   },
 });

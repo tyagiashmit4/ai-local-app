@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { View, FlatList, StyleSheet, Text, Alert } from 'react-native';
+import { View, FlatList, StyleSheet, Text, Alert, LayoutAnimation, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { ModelCard } from '../components/ModelCard';
 import { RECOMMENDED_MODELS, downloadModel, ModelInfo } from '../api/huggingface';
 import { listModels, getModelPath, deleteModel } from '../utils/fileSystem';
 import { useLlama } from '../hooks/useLlama';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { theme } from '../styles/theme';
+import { ChevronLeft } from 'lucide-react-native';
 
-export const ModelScreen = () => {
+export const ModelScreen = ({ navigation }: any) => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadedFiles, setDownloadedFiles] = useState<string[]>([]);
-  const { loadModel, isGenerating, currentModelName } = useLlama();
+  const { loadModel, isGenerating, currentModelName, isLoadingModel } = useLlama();
 
   useEffect(() => {
     refreshDownloadedModels();
@@ -21,9 +23,10 @@ export const ModelScreen = () => {
     setDownloadedFiles(files.map(f => f.name));
   };
 
-  const handeDownload = async (model: ModelInfo) => {
+  const handleDownload = async (model: ModelInfo) => {
     if (downloadingId) return;
     
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setDownloadingId(model.id);
     setDownloadProgress(0);
     
@@ -31,7 +34,7 @@ export const ModelScreen = () => {
       await downloadModel(model, (progress) => {
         setDownloadProgress(progress);
       });
-      Alert.alert('Success', 'Model downloaded successfully!');
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
       refreshDownloadedModels();
     } catch (err: any) {
       Alert.alert('Download Error', err.message);
@@ -48,9 +51,8 @@ export const ModelScreen = () => {
 
     const path = getModelPath(model.filename);
     try {
-      Alert.alert('Loading', 'Loading model into RAM. This may take a few seconds...');
       await loadModel(path);
-      Alert.alert('Loaded', `${model.name} is ready!`);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
     } catch (err: any) {
       Alert.alert('Load Error', err.message);
     }
@@ -58,8 +60,8 @@ export const ModelScreen = () => {
 
   const handleDelete = async (model: ModelInfo) => {
     Alert.alert(
-      'Delete Model',
-      `Are you sure you want to delete ${model.name}?`,
+      'Delete Brain',
+      `Are you sure you want to remove ${model.name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -67,6 +69,7 @@ export const ModelScreen = () => {
           style: 'destructive',
           onPress: async () => {
             await deleteModel(model.filename);
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             refreshDownloadedModels();
           }
         }
@@ -75,10 +78,19 @@ export const ModelScreen = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Model Management</Text>
-        <Text style={styles.headerSubtitle}>Models are stored locally on your device.</Text>
+        <View style={styles.titleRow}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+            activeOpacity={0.7}
+          >
+            <ChevronLeft size={28} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Neural Center</Text>
+        </View>
+        <Text style={styles.headerSubtitle}>Manage your local AI brains. Offline & Secure.</Text>
       </View>
 
       <FlatList
@@ -91,13 +103,23 @@ export const ModelScreen = () => {
             isLoading={downloadingId === item.id}
             isCurrent={currentModelName === item.filename}
             progress={downloadProgress}
-            onDownload={() => handeDownload(item)}
+            onDownload={() => handleDownload(item)}
             onSelect={() => handleSelect(item)}
             onDelete={() => handleDelete(item)}
           />
         )}
         contentContainerStyle={styles.listContent}
       />
+
+      {isLoadingModel && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContent}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Text style={styles.loadingText}>Infusing Brain...</Text>
+            <Text style={styles.loadingSubtext}>Loading model into RAM. Please wait.</Text>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -105,24 +127,66 @@ export const ModelScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.background,
   },
   header: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E9E9EB',
+    padding: theme.spacing.lg,
+    backgroundColor: theme.colors.surface,
+    ...theme.shadows.soft,
+    marginBottom: theme.spacing.sm,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#000000',
+    fontSize: 28,
+    fontWeight: '900',
+    color: theme.colors.text,
+    letterSpacing: -0.5,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#8E8E93',
-    marginTop: 4,
+    color: theme.colors.textMuted,
+    fontWeight: '500',
+    opacity: 0.8,
+    paddingLeft: 40
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    marginLeft: -8, 
+  },
+  backButton: {
+    padding: 8,
+    marginRight: 4,
+    borderRadius: 12,
   },
   listContent: {
-    padding: 20,
+    padding: theme.spacing.md,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  loadingContent: {
+    backgroundColor: theme.colors.surface,
+    padding: theme.spacing.xl,
+    borderRadius: theme.borderRadius.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  loadingText: {
+    color: theme.colors.text,
+    fontSize: 20,
+    fontWeight: '800',
+    marginTop: 16,
+  },
+  loadingSubtext: {
+    color: theme.colors.textMuted,
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
   },
 });

@@ -12,6 +12,7 @@ class LlamaService {
 
   async loadModel(path: string, n_ctx: number = 2048): Promise<void> {
     if (this.context) {
+      console.log('[LlamaService] Releasing previous context');
       await this.context.release();
     }
 
@@ -20,12 +21,14 @@ class LlamaService {
       throw new Error(`Model file not found at: ${path}`);
     }
 
+    console.log(`[LlamaService] Loading model from: ${path}`);
     this.context = await initLlama({
       model: path,
-      use_mlock: true,
+      use_mlock: false, // Disabled to prevent allocation failures on memory-constrained devices
       n_ctx: n_ctx,
-      n_gpu_layers: 50, // Try to offload to GPU if possible
+      n_gpu_layers: 0, // CPU only for better stability on mobile
     });
+    console.log('[LlamaService] Model loaded successfully');
     this.modelPath = path;
   }
 

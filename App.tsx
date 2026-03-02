@@ -8,6 +8,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native';
 
 import { LlamaProvider } from './src/context/LlamaContext';
+import { theme } from './src/styles/theme';
 
 const Stack = createStackNavigator();
 
@@ -20,17 +21,29 @@ const App = () => {
             <Stack.Navigator 
               initialRouteName="Chat"
               screenOptions={{
-                headerShown: false,
+                headerStyle: {
+                  backgroundColor: theme.colors.surface,
+                  borderBottomWidth: 0,
+                  elevation: 0,
+                  shadowOpacity: 0,
+                },
+                headerTintColor: theme.colors.text,
+                headerTitleStyle: {
+                  fontWeight: '800',
+                },
               }}
             >
-              <Stack.Screen name="Chat" component={ChatScreen} />
+              <Stack.Screen 
+                name="Chat" 
+                component={ChatScreen} 
+                options={{ headerShown: false }}
+              />
               <Stack.Screen 
                 name="Models" 
                 component={ModelScreen} 
                 options={{ 
-                  headerShown: true,
-                  title: 'Settings',
-                  headerBackTitle: 'Chat'
+                  headerShown: false,
+                
                 }}
               />
             </Stack.Navigator>

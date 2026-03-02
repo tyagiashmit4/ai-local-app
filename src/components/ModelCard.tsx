@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { ModelInfo } from '../api/huggingface';
-import { Download, CheckCircle, Play, Trash2 } from 'lucide-react-native';
+import { Download, CheckCircle, Play, Trash2, Cpu } from 'lucide-react-native';
+import { theme } from '../styles/theme';
 
 interface ModelCardProps {
   model: ModelInfo;
@@ -25,15 +26,22 @@ export const ModelCard: React.FC<ModelCardProps> = ({
   onDelete,
 }) => {
   return (
-    <View style={[styles.container, isCurrent && styles.currentContainer]}>
+    <View style={[
+      styles.container, 
+      isCurrent && styles.currentContainer,
+      theme.shadows.soft
+    ]}>
       <View style={styles.header}>
+        <View style={styles.iconContainer}>
+          <Cpu color={isCurrent ? theme.colors.success : theme.colors.primary} size={24} />
+        </View>
         <View style={styles.info}>
           <Text style={styles.name}>{model.name}</Text>
           <Text style={styles.size}>{model.size}</Text>
         </View>
         {isDownloaded && !isLoading && (
            <TouchableOpacity onPress={onDelete} style={styles.deleteButton}>
-            <Trash2 color="#FF3B30" size={18} />
+            <Trash2 color={theme.colors.error} size={18} />
           </TouchableOpacity>
         )}
       </View>
@@ -42,7 +50,10 @@ export const ModelCard: React.FC<ModelCardProps> = ({
 
       {isLoading ? (
         <View style={styles.progressContainer}>
-          <Text style={styles.progressText}>Downloading... {Math.round(progress)}%</Text>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressLabel}>Downloading Brain...</Text>
+            <Text style={styles.progressPercent}>{Math.round(progress)}%</Text>
+          </View>
           <View style={styles.progressBar}>
              <View style={[styles.progressFill, { width: `${progress}%` }]} />
           </View>
@@ -56,12 +67,24 @@ export const ModelCard: React.FC<ModelCardProps> = ({
             </TouchableOpacity>
           ) : (
             <TouchableOpacity 
-              style={[styles.selectButton, isCurrent && styles.selectedButton]} 
+              style={[
+                styles.selectButton, 
+                isCurrent ? styles.selectedButton : styles.idleButton
+              ]} 
               onPress={onSelect}
               disabled={isCurrent}
             >
-              {isCurrent ? <CheckCircle color="#FFFFFF" size={18} /> : <Play color="#FFFFFF" size={18} />}
-              <Text style={styles.buttonText}>{isCurrent ? 'Current Model' : 'Load Model'}</Text>
+              {isCurrent ? (
+                <CheckCircle color={theme.colors.success} size={18} />
+              ) : (
+                <Play color="#FFFFFF" size={18} />
+              )}
+              <Text style={[
+                styles.buttonText, 
+                isCurrent && { color: theme.colors.success }
+              ]}>
+                {isCurrent ? 'Active Engine' : 'Load Model'}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -72,22 +95,30 @@ export const ModelCard: React.FC<ModelCardProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#F2F2F7',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
     borderWidth: 1,
-    borderColor: '#E9E9EB',
+    borderColor: 'rgba(255, 255, 255, 0.05)',
   },
   currentContainer: {
-    borderColor: '#007AFF',
-    backgroundColor: '#F0F7FF',
+    borderColor: theme.colors.success,
+    backgroundColor: 'rgba(16, 185, 129, 0.05)',
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
   info: {
     flex: 1,
@@ -95,65 +126,81 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000000',
+    color: theme.colors.text,
   },
   size: {
-    fontSize: 14,
-    color: '#8E8E93',
+    fontSize: 12,
+    color: theme.colors.textMuted,
     marginTop: 2,
+    fontWeight: '600',
   },
   description: {
     fontSize: 14,
-    color: '#3C3C43',
-    marginBottom: 16,
-    lineHeight: 18,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.lg,
+    lineHeight: 20,
   },
   actions: {
     flexDirection: 'row',
   },
   downloadButton: {
     flexDirection: 'row',
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: 'center',
   },
   selectButton: {
     flexDirection: 'row',
-    backgroundColor: '#34C759',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: 'center',
+    borderWidth: 1,
+  },
+  idleButton: {
+    backgroundColor: theme.colors.secondary,
+    borderColor: theme.colors.secondary,
   },
   selectedButton: {
-    backgroundColor: '#8E8E93',
+    backgroundColor: 'transparent',
+    borderColor: theme.colors.success,
   },
   buttonText: {
     color: '#FFFFFF',
-    fontWeight: '600',
+    fontWeight: '700',
     marginLeft: 8,
   },
   deleteButton: {
-    padding: 4,
+    padding: 8,
   },
   progressContainer: {
     marginTop: 8,
   },
-  progressText: {
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  progressLabel: {
     fontSize: 12,
-    color: '#8E8E93',
-    marginBottom: 4,
+    color: theme.colors.textMuted,
+    fontWeight: '600',
+  },
+  progressPercent: {
+    fontSize: 12,
+    color: theme.colors.primary,
+    fontWeight: '800',
   },
   progressBar: {
-    height: 6,
-    backgroundColor: '#E9E9EB',
-    borderRadius: 3,
+    height: 8,
+    backgroundColor: theme.colors.background,
+    borderRadius: 4,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.primary,
   },
 });
