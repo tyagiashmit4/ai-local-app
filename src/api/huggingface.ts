@@ -7,6 +7,7 @@ export interface ModelInfo {
   repo: string;
   filename: string;
   size: string;
+  expectedSizeBytes: number;
   description: string;
 }
 
@@ -17,6 +18,7 @@ export const RECOMMENDED_MODELS: ModelInfo[] = [
     repo: 'bartowski/Llama-3.2-1B-Instruct-GGUF',
     filename: 'Llama-3.2-1B-Instruct-Q4_K_M.gguf',
     size: '700MB',
+    expectedSizeBytes: 810000000, // Approx 810MB
     description: 'Fastest for mobile, good for basic tasks.',
   },
   {
@@ -25,6 +27,7 @@ export const RECOMMENDED_MODELS: ModelInfo[] = [
     repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
     filename: 'Phi-3.5-mini-instruct-Q4_K_M.gguf',
     size: '2.2GB',
+    expectedSizeBytes: 2390000000, // Approx 2.39GB
     description: 'Strong reasoning, requires more RAM.',
   }
 ];
@@ -50,5 +53,14 @@ export const downloadModel = async (
   };
 
   const result = RNFS.downloadFile(options);
-  return result.promise;
+  
+  try {
+    return await result.promise;
+  } catch (err) {
+    // Cleanup partial file if download fails
+    if (await RNFS.exists(path)) {
+      await RNFS.unlink(path);
+    }
+    throw err;
+  }
 };
