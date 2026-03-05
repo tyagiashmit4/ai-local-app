@@ -1,4 +1,4 @@
-package com.aiproject
+package com.Cerebro
 
 import android.app.Application
 import com.facebook.react.PackageList
