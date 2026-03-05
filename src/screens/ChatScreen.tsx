@@ -14,7 +14,8 @@ import {
 import { useLlama } from '../hooks/useLlama';
 import { ChatBubble } from '../components/ChatBubble';
 import { ChatMenu } from '../components/ChatMenu';
-import { Send, Menu, Trash2, Cpu } from 'lucide-react-native';
+import { Send, Menu, Trash2, Cpu, Mic, Volume2 } from 'lucide-react-native';
+import { useWhisper } from '../hooks/useWhisper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../styles/theme';
 
@@ -22,6 +23,7 @@ export const ChatScreen = ({ navigation }: any) => {
   const [input, setInput] = useState('');
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const { messages, isGenerating, isLoaded, error, sendMessage, currentModelName } = useLlama();
+  const { isRecording, isTranscribing, startRecording, stopRecording, isWhisperLoaded } = useWhisper();
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -38,6 +40,21 @@ export const ChatScreen = ({ navigation }: any) => {
     if (input.trim() && isLoaded && !isGenerating) {
       sendMessage(input);
       setInput('');
+    }
+  };
+
+  const handleMicPress = async () => {
+    if (isRecording) {
+      const text = await stopRecording();
+      if (text && text !== 'Transcription failed' && text !== 'Whisper model not loaded') {
+        setInput(prev => prev + (prev ? ' ' : '') + text);
+      }
+    } else {
+      if (!isWhisperLoaded) {
+        Alert.alert('Whisper Not Ready', 'Please load a Whisper model from the Brain Store first.');
+        return;
+      }
+      await startRecording();
     }
   };
 
@@ -105,13 +122,27 @@ export const ChatScreen = ({ navigation }: any) => {
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
-            placeholder={isLoaded ? "Type a prompt..." : "Waiting for model..."}
+            placeholder={isLoaded ? (isRecording ? "Listening..." : "Type a prompt...") : "Waiting for model..."}
             placeholderTextColor={theme.colors.textMuted}
             value={input}
             onChangeText={setInput}
             multiline
-            editable={isLoaded && !isGenerating}
+            editable={isLoaded && !isGenerating && !isRecording}
           />
+          <TouchableOpacity 
+            style={[
+              styles.micButton,
+              isRecording && styles.micButtonActive
+            ]}
+            onPress={handleMicPress}
+            disabled={!isLoaded || isGenerating || isTranscribing}
+          >
+            {isTranscribing ? (
+              <ActivityIndicator color={theme.colors.primary} size="small" />
+            ) : (
+              <Mic color={isRecording ? theme.colors.error : theme.colors.textMuted} size={20} />
+            )}
+          </TouchableOpacity>
           <TouchableOpacity 
             style={[
               styles.sendButton, 
@@ -206,6 +237,17 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     backgroundColor: theme.colors.surface,
     opacity: 0.5,
+  },
+  micButton: {
+    width: 45,
+    height: 45,
+    borderRadius: theme.borderRadius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  micButtonActive: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
   },
   emptyState: {
     flex: 1,

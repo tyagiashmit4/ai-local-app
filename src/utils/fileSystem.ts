@@ -25,7 +25,7 @@ export const getModelPath = (filename: string) => {
 export const listModels = async () => {
   await ensureModelsDir();
   const files = await RNFS.readDir(MODELS_DIR);
-  return files.filter(f => f.name.endsWith('.gguf'));
+  return files.filter(f => f.name.endsWith('.gguf') || f.name.endsWith('.bin'));
 };
 
 export const deleteModel = async (filename: string) => {

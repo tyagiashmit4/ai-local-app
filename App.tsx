@@ -8,6 +8,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native';
 
 import { LlamaProvider } from './src/context/LlamaContext';
+import { WhisperProvider } from './src/context/WhisperContext';
 import { theme } from './src/styles/theme';
 
 const Stack = createStackNavigator();
@@ -17,7 +18,8 @@ const App = () => {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <LlamaProvider>
-          <NavigationContainer>
+          <WhisperProvider>
+            <NavigationContainer>
             <Stack.Navigator 
               initialRouteName="Chat"
               screenOptions={{
@@ -48,8 +50,9 @@ const App = () => {
               />
             </Stack.Navigator>
           </NavigationContainer>
-        </LlamaProvider>
-      </SafeAreaProvider>
+        </WhisperProvider>
+      </LlamaProvider>
+    </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 };

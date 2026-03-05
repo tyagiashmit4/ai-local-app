@@ -4,6 +4,7 @@ import { ModelCard } from '../components/ModelCard';
 import { RECOMMENDED_MODELS, downloadModel, ModelInfo } from '../api/huggingface';
 import { listModels, getModelPath, deleteModel } from '../utils/fileSystem';
 import { useLlama } from '../hooks/useLlama';
+import { useWhisper } from '../hooks/useWhisper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../styles/theme';
 import { ChevronLeft } from 'lucide-react-native';
@@ -13,6 +14,7 @@ export const ModelScreen = ({ navigation }: any) => {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadedFiles, setDownloadedFiles] = useState<string[]>([]);
   const { loadModel, isGenerating, currentModelName, isLoadingModel } = useLlama();
+  const { loadWhisperModel } = useWhisper();
 
   useEffect(() => {
     refreshDownloadedModels();
@@ -51,7 +53,12 @@ export const ModelScreen = ({ navigation }: any) => {
 
     const path = getModelPath(model.filename);
     try {
-      await loadModel(path);
+      if (model.filename.endsWith('.bin')) {
+        await loadWhisperModel(path);
+        Alert.alert('Success', 'Whisper model loaded successfully');
+      } else {
+        await loadModel(path);
+      }
       LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
     } catch (err: any) {
       Alert.alert('Load Error', err.message);

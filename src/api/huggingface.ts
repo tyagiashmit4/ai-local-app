@@ -29,6 +29,15 @@ export const RECOMMENDED_MODELS: ModelInfo[] = [
     size: '2.2GB',
     expectedSizeBytes: 2390000000, // Approx 2.39GB
     description: 'Strong reasoning, requires more RAM.',
+  },
+  {
+    id: 'whisper-tiny-en',
+    name: 'Whisper Tiny (English)',
+    repo: 'ggerganov/whisper.cpp',
+    filename: 'ggml-tiny.en.bin',
+    size: '75MB',
+    expectedSizeBytes: 77000000,
+    description: 'Lightweight speech-to-text model.',
   }
 ];
 
