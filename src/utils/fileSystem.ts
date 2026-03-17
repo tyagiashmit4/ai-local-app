@@ -29,6 +29,9 @@ export const listModels = async () => {
 };
 
 export const deleteModel = async (filename: string) => {
+  if (filename === 'Llama-3.2-1B-Instruct-Q4_K_M.gguf') {
+    throw new Error('The default system model cannot be deleted.');
+  }
   const path = getModelPath(filename);
   if (await RNFS.exists(path)) {
     await RNFS.unlink(path);

@@ -4,6 +4,7 @@ import RNFS from 'react-native-fs';
 export type Message = {
   role: 'user' | 'assistant';
   content: string;
+  exportFormat?: 'pdf' | 'word' | 'excel';
 };
 
 class LlamaService {
@@ -65,8 +66,8 @@ class LlamaService {
 
   async stopGeneration(): Promise<void> {
     if (this.context) {
-      // llama.rn has a stop method or we can just ignore future tokens
-      // For now, let's assume we handle it via state in the hook
+      await this.context.stopCompletion();
+      console.log('[LlamaService] Stopped generation');
     }
   }
 

@@ -1,4 +1,4 @@
-import { initWhisper, WhisperContext } from 'react-native-whisper';
+import { initWhisper, WhisperContext } from 'whisper.rn';
 import RNFS from 'react-native-fs';
 
 class WhisperService {
@@ -36,6 +36,31 @@ class WhisperService {
     });
 
     return result;
+  }
+
+  async transcribeRealtime(onProgress: (text: string) => void, onDone: (text: string) => void): Promise<() => Promise<void>> {
+    if (!this.context) {
+      throw new Error('Whisper model not loaded');
+    }
+    
+    console.log('[WhisperService] Starting realtime transcription');
+    const { stop, subscribe } = await this.context.transcribeRealtime({
+      language: 'en',
+    });
+
+    let currentText = '';
+    subscribe((evt: any) => {
+      const { isCapturing, data } = evt;
+      if (data?.result) {
+        currentText = data.result;
+        onProgress(currentText);
+      }
+      if (!isCapturing) {
+        onDone(currentText);
+      }
+    });
+
+    return stop;
   }
 
   isLoaded(): boolean {

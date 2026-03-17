@@ -11,48 +11,54 @@ import { LlamaProvider } from './src/context/LlamaContext';
 import { WhisperProvider } from './src/context/WhisperContext';
 import { theme } from './src/styles/theme';
 
+import { KeyboardProvider } from 'react-native-keyboard-controller';
+
 const Stack = createStackNavigator();
 
 const App = () => {
   return (
     <GestureHandlerRootView style={styles.root}>
-      <SafeAreaProvider>
-        <LlamaProvider>
+      
+        <SafeAreaProvider>
+          <KeyboardProvider>
           <WhisperProvider>
-            <NavigationContainer>
-            <Stack.Navigator 
-              initialRouteName="Chat"
-              screenOptions={{
-                headerStyle: {
-                  backgroundColor: theme.colors.surface,
-                  borderBottomWidth: 0,
-                  elevation: 0,
-                  shadowOpacity: 0,
-                },
-                headerTintColor: theme.colors.text,
-                headerTitleStyle: {
-                  fontWeight: '800',
-                },
-              }}
-            >
-              <Stack.Screen 
-                name="Chat" 
-                component={ChatScreen} 
-                options={{ headerShown: false }}
-              />
-              <Stack.Screen 
-                name="Models" 
-                component={ModelScreen} 
-                options={{ 
-                  headerShown: false,
-                
+            <LlamaProvider>
+                <NavigationContainer>
+              <Stack.Navigator 
+                initialRouteName="Chat"
+                screenOptions={{
+                  headerStyle: {
+                    backgroundColor: theme.colors.surface,
+                    borderBottomWidth: 0,
+                    elevation: 0,
+                    shadowOpacity: 0,
+                  },
+                  headerTintColor: theme.colors.text,
+                  headerTitleStyle: {
+                    fontWeight: '800',
+                  },
                 }}
-              />
-            </Stack.Navigator>
-          </NavigationContainer>
+              >
+                <Stack.Screen 
+                  name="Chat" 
+                  component={ChatScreen} 
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen 
+                  name="Models" 
+                  component={ModelScreen} 
+                  options={{ 
+                    headerShown: false,
+                  
+                  }}
+                />
+              </Stack.Navigator>
+            </NavigationContainer>
+          </LlamaProvider>
         </WhisperProvider>
-      </LlamaProvider>
-    </SafeAreaProvider>
+         </KeyboardProvider>
+      </SafeAreaProvider>
+     
     </GestureHandlerRootView>
   );
 };

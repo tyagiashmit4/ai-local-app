@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { llamaService, Message } from '../services/LlamaService';
-import { loadSettings, saveSettings, saveChat, listChats, loadChat, deleteChat } from '../utils/fileSystem';
+import { loadSettings, saveSettings, saveChat, listChats, loadChat, deleteChat, getModelPath, listModels } from '../utils/fileSystem';
+import { RECOMMENDED_MODELS, downloadModel } from '../api/huggingface';
 
 export interface ChatSession {
   id: string;
@@ -23,6 +24,7 @@ interface LlamaContextType {
   deleteSessions: (ids: string[]) => Promise<void>;
   currentModelName: string | null;
   isLoadingModel: boolean;
+  stopGeneration: () => Promise<void>;
 }
 
 const LlamaContext = createContext<LlamaContextType | undefined>(undefined);
@@ -130,24 +132,51 @@ export const LlamaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   useEffect(() => {
     const init = async () => {
       try {
-        // Load model
+        const defaultModelInfo = RECOMMENDED_MODELS.find(m => m.isDefault);
         const settings = await loadSettings();
-        if (settings?.lastModelPath) {
-          await loadModel(settings.lastModelPath);
+        let targetModelPath = settings?.lastModelPath;
+
+        const loadedSessions = await loadSessions();
+
+        // 1. Check if the default model exists
+        if (defaultModelInfo) {
+          const defaultPath = getModelPath(defaultModelInfo.filename);
+          const currentModels = await listModels();
+          const hasDefault = currentModels.some((f: { name: string; }) => f.name === defaultModelInfo.filename);
+
+          if (!hasDefault) {
+             // Only auto-download if we really don't have it
+             console.log('[LlamaContext] Default model not found. Auto-downloading...');
+             setIsLoadingModel(true);
+             try {
+               await downloadModel(defaultModelInfo, () => {});
+               console.log('[LlamaContext] Default model auto-downloaded successfully');
+               targetModelPath = defaultPath; // Force load newly downloaded model
+             } catch (err) {
+               console.error('[LlamaContext] Failed to auto-download default model', err);
+             } finally {
+               setIsLoadingModel(false);
+             }
+          } else if (!targetModelPath) {
+             // If they have it but no last model is set, default to it
+             targetModelPath = defaultPath;
+          }
         }
 
-        // Load sessions
-        const loaded = await loadSessions();
-        
-        // Load active session
+        // 2. Load the target model only if it's not already loaded
+        if (targetModelPath && (!llamaService.isLoaded() || targetModelPath !== settings?.lastModelPath)) {
+          await loadModel(targetModelPath);
+        }
+
+        // 3. Load active session
         const lastActiveId = settings?.activeSessionId;
-        if (lastActiveId && loaded.find(s => s.id === lastActiveId)) {
-          const session = loaded.find(s => s.id === lastActiveId);
+        if (lastActiveId && loadedSessions.find(s => s.id === lastActiveId)) {
+          const session = loadedSessions.find(s => s.id === lastActiveId);
           setActiveSessionId(lastActiveId);
           setMessages(session?.messages || []);
-        } else if (loaded.length > 0) {
-          setActiveSessionId(loaded[0].id);
-          setMessages(loaded[0].messages);
+        } else if (loadedSessions.length > 0) {
+          setActiveSessionId(loadedSessions[0].id);
+          setMessages(loadedSessions[0].messages);
         } else {
           await createNewChat();
         }
@@ -168,8 +197,14 @@ export const LlamaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setIsGenerating(true);
     setError(null);
 
+    let exportFormat: 'pdf' | 'word' | 'excel' | undefined;
+    const lowerText = text.toLowerCase();
+    if (lowerText.includes('pdf')) exportFormat = 'pdf';
+    else if (lowerText.includes('word')) exportFormat = 'word';
+    else if (lowerText.includes('excel')) exportFormat = 'excel';
+
     let assistantContent = '';
-    const assistantMessage: Message = { role: 'assistant', content: '' };
+    const assistantMessage: Message = { role: 'assistant', content: '', exportFormat };
     
     setMessages(prev => [...prev, assistantMessage]);
 
@@ -192,6 +227,13 @@ export const LlamaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   }, [messages, isGenerating]);
 
+  const stopGeneration = useCallback(async () => {
+    if (isGenerating) {
+      await llamaService.stopGeneration();
+      setIsGenerating(false);
+    }
+  }, [isGenerating]);
+
   return (
     <LlamaContext.Provider value={{
       sessions,
@@ -206,7 +248,8 @@ export const LlamaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       switchChat,
       deleteSessions,
       currentModelName,
-      isLoadingModel
+      isLoadingModel,
+      stopGeneration
     }}>
       {children}
     </LlamaContext.Provider>

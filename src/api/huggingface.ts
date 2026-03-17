@@ -9,6 +9,7 @@ export interface ModelInfo {
   size: string;
   expectedSizeBytes: number;
   description: string;
+  isDefault?: boolean;
 }
 
 export const RECOMMENDED_MODELS: ModelInfo[] = [
@@ -20,6 +21,25 @@ export const RECOMMENDED_MODELS: ModelInfo[] = [
     size: '700MB',
     expectedSizeBytes: 810000000, // Approx 810MB
     description: 'Fastest for mobile, good for basic tasks.',
+    isDefault: true,
+  },
+  {
+    id: 'qwen-2.5-1.5b',
+    name: 'Qwen 2.5 1.5B',
+    repo: 'Qwen/Qwen2.5-1.5B-Instruct-GGUF',
+    filename: 'qwen2.5-1.5b-instruct-q4_k_m.gguf',
+    size: '1.1GB',
+    expectedSizeBytes: 1120000000, // Approx 1.12GB
+    description: 'Excellent multilingual capabilities and efficiency.',
+  },
+  {
+    id: 'gemma-2-2b',
+    name: 'Gemma 2 2B',
+    repo: 'bartowski/gemma-2-2b-it-GGUF',
+    filename: 'gemma-2-2b-it-Q4_K_M.gguf',
+    size: '1.6GB',
+    expectedSizeBytes: 1640000000, // Approx 1.64GB
+    description: 'Highly capable 2B model by Google.',
   },
   {
     id: 'phi-3.5-mini',

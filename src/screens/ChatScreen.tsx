@@ -5,16 +5,18 @@ import {
   TextInput, 
   TouchableOpacity, 
   StyleSheet, 
-  KeyboardAvoidingView, 
   Platform,
   Text,
   ActivityIndicator,
   LayoutAnimation,
+  Alert,
+  KeyboardAvoidingView,
+  Keyboard
 } from 'react-native';
 import { useLlama } from '../hooks/useLlama';
 import { ChatBubble } from '../components/ChatBubble';
 import { ChatMenu } from '../components/ChatMenu';
-import { Send, Menu, Trash2, Cpu, Mic, Volume2 } from 'lucide-react-native';
+import { Send, Menu, Trash2, Cpu, Mic, Volume2, Square } from 'lucide-react-native';
 import { useWhisper } from '../hooks/useWhisper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../styles/theme';
@@ -22,13 +24,14 @@ import { theme } from '../styles/theme';
 export const ChatScreen = ({ navigation }: any) => {
   const [input, setInput] = useState('');
   const [isMenuVisible, setIsMenuVisible] = useState(false);
-  const { messages, isGenerating, isLoaded, error, sendMessage, currentModelName } = useLlama();
-  const { isRecording, isTranscribing, startRecording, stopRecording, isWhisperLoaded } = useWhisper();
+
+  const { messages, isGenerating, isLoaded, error, sendMessage, currentModelName, isLoadingModel, stopGeneration } = useLlama();
+  const { isRecording, isTranscribing, startRecording, stopRecording, isWhisperLoaded, realtimeText } = useWhisper();
+
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
     if (messages.length > 0) {
-      // Smooth layout animation for new messages
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
@@ -36,10 +39,22 @@ export const ChatScreen = ({ navigation }: any) => {
     }
   }, [messages]);
 
+  // 🔥 Keyboard auto scroll fix
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => show.remove();
+  }, []);
+
   const handleSend = () => {
-    if (input.trim() && isLoaded && !isGenerating) {
-      sendMessage(input);
+    const finalInput = isRecording ? displayInput : input;
+    if (finalInput.trim() && isLoaded && !isGenerating) {
+      sendMessage(finalInput);
       setInput('');
+      if (isRecording) {
+        stopRecording();
+      }
     }
   };
 
@@ -58,106 +73,137 @@ export const ChatScreen = ({ navigation }: any) => {
     }
   };
 
+  const displayInput = isRecording && realtimeText 
+    ? input + (input ? ' ' : '') + realtimeText 
+    : input;
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Llama AI</Text>
-          {isLoaded && (
-            <View style={styles.modelStatus}>
-              <Cpu size={12} color={theme.colors.success} />
-              <Text style={styles.modelName}>{currentModelName}</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity 
-            onPress={() => setIsMenuVisible(true)} 
-            style={styles.iconButton}
-          >
-            <Menu color={theme.colors.primary} size={24} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ChatMenu 
-        isVisible={isMenuVisible} 
-        onClose={() => setIsMenuVisible(false)} 
-        navigation={navigation}
-      />
-
-      {!isLoaded && (
-        <View style={styles.emptyState}>
-          <Cpu size={64} color={theme.colors.surface} />
-          <Text style={styles.emptyText}>No Brain Detected</Text>
-          <Text style={styles.emptySubtext}>Load a local model to start chatting offline.</Text>
-          <TouchableOpacity 
-            style={styles.loadButton}
-            onPress={() => navigation.navigate('Models')}
-          >
-            <Text style={styles.loadButtonText}>Go to Brain Store</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={(_, index) => index.toString()}
-        renderItem={({ item }) => <ChatBubble message={item} />}
-        contentContainerStyle={styles.listContent}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-      />
-
-      {error && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
-
+      
+      {/* 🔥 WRAP WHOLE SCREEN */}
       <KeyboardAvoidingView
+        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
       >
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder={isLoaded ? (isRecording ? "Listening..." : "Type a prompt...") : "Waiting for model..."}
-            placeholderTextColor={theme.colors.textMuted}
-            value={input}
-            onChangeText={setInput}
-            multiline
-            editable={isLoaded && !isGenerating && !isRecording}
-          />
-          <TouchableOpacity 
-            style={[
-              styles.micButton,
-              isRecording && styles.micButtonActive
-            ]}
-            onPress={handleMicPress}
-            disabled={!isLoaded || isGenerating || isTranscribing}
-          >
-            {isTranscribing ? (
-              <ActivityIndicator color={theme.colors.primary} size="small" />
-            ) : (
-              <Mic color={isRecording ? theme.colors.error : theme.colors.textMuted} size={20} />
+
+        {/* HEADER */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.headerTitle}>Llama AI</Text>
+            {isLoaded && (
+              <View style={styles.modelStatus}>
+                <Cpu size={12} color={theme.colors.success} />
+                <Text style={styles.modelName}>{currentModelName}</Text>
+              </View>
             )}
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[
-              styles.sendButton, 
-              (!input.trim() || !isLoaded || isGenerating) && styles.sendButtonDisabled
-            ]}
-            onPress={handleSend}
-            disabled={!input.trim() || !isLoaded || isGenerating}
-          >
-            {isGenerating ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Send color="#FFFFFF" size={20} />
-            )}
-          </TouchableOpacity>
+          </View>
+
+          <View style={styles.headerActions}>
+            <TouchableOpacity 
+              onPress={() => setIsMenuVisible(true)} 
+              style={styles.iconButton}
+            >
+              <Menu color={theme.colors.primary} size={24} />
+            </TouchableOpacity>
+          </View>
         </View>
+
+        <ChatMenu 
+          isVisible={isMenuVisible} 
+          onClose={() => setIsMenuVisible(false)} 
+          navigation={navigation}
+        />
+
+        {/* STATES */}
+        {isLoadingModel ? (
+          <View style={styles.loadingOverlay}>
+            <View style={styles.loadingContent}>
+              <ActivityIndicator size="large" color={theme.colors.primary} />
+              <Text style={styles.loadingText}>Infusing Brain...</Text>
+              <Text style={styles.loadingSubtext}>Loading model into RAM. Please wait.</Text>
+            </View>
+          </View>
+        ) : !isLoaded ? (
+          <View style={styles.emptyState}>
+            <Cpu size={64} color={theme.colors.surface} />
+            <Text style={styles.emptyText}>No Brain Detected</Text>
+            <Text style={styles.emptySubtext}>Load a local model to start chatting offline.</Text>
+            <TouchableOpacity 
+              style={styles.loadButton}
+              onPress={() => navigation.navigate('Models')}
+            >
+              <Text style={styles.loadButtonText}>Go to Brain Store</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          // 🔥 MAIN CHAT AREA
+          <View style={{ flex: 1 }}>
+
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={(_, index) => index.toString()}
+              renderItem={({ item }) => <ChatBubble message={item} />}
+              contentContainerStyle={styles.listContent}
+              keyboardShouldPersistTaps="handled"
+              onContentSizeChange={() =>
+                flatListRef.current?.scrollToEnd({ animated: true })
+              }
+            />
+
+            {error && (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
+
+            {/* 🔥 STICKY INPUT */}
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder={isLoaded ? (isRecording ? "Listening..." : "Type a prompt...") : "Waiting for model..."}
+                placeholderTextColor={theme.colors.textMuted}
+                value={displayInput}
+                onChangeText={setInput}
+                multiline
+                editable={isLoaded && !isRecording}
+              />
+
+              <TouchableOpacity 
+                style={[
+                  styles.micButton,
+                  isRecording && styles.micButtonActive
+                ]}
+                onPress={handleMicPress}
+                disabled={!isLoaded || isGenerating || isTranscribing}
+              >
+                {isTranscribing ? (
+                  <ActivityIndicator color={theme.colors.primary} size="small" />
+                ) : (
+                  <Mic color={isRecording ? theme.colors.error : theme.colors.textMuted} size={20} />
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[
+                  styles.sendButton, 
+                  (!displayInput.trim() || !isLoaded) && !isGenerating && styles.sendButtonDisabled
+                ]}
+                onPress={isGenerating ? stopGeneration : handleSend}
+                disabled={(!displayInput.trim() || !isLoaded) && !isGenerating}
+              >
+                {isGenerating ? (
+                  <Square color="#FFFFFF" size={20} fill="#FFFFFF" />
+                ) : (
+                  <Send color="#FFFFFF" size={20} />
+                )}
+              </TouchableOpacity>
+            </View>
+
+          </View>
+        )}
+
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -213,6 +259,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.05)',
+    zIndex: 100,
   },
   input: {
     flex: 1,
@@ -290,6 +337,33 @@ const styles = StyleSheet.create({
   errorText: {
     color: theme.colors.error,
     fontSize: 14,
+    textAlign: 'center',
+  },
+  loadingOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.xl,
+    backgroundColor: theme.colors.background,
+  },
+  loadingContent: {
+    backgroundColor: theme.colors.surface,
+    padding: theme.spacing.xl,
+    borderRadius: theme.borderRadius.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  loadingText: {
+    color: theme.colors.text,
+    fontSize: 20,
+    fontWeight: '800',
+    marginTop: 16,
+  },
+  loadingSubtext: {
+    color: theme.colors.textMuted,
+    fontSize: 14,
+    marginTop: 8,
     textAlign: 'center',
   },
 });

@@ -1,7 +1,5 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef } from 'react';
 import { whisperService } from '../services/WhisperService';
-import AudioRecorderPlayer from 'react-native-audio-recorder-player';
-import RNFS from 'react-native-fs';
 import { Platform, PermissionsAndroid } from 'react-native';
 import { loadSettings } from '../utils/fileSystem';
 
@@ -9,6 +7,7 @@ interface WhisperContextType {
   isRecording: boolean;
   isTranscribing: boolean;
   transcription: string;
+  realtimeText: string;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<string>;
   isWhisperLoaded: boolean;
@@ -17,13 +16,13 @@ interface WhisperContextType {
 
 const WhisperContext = createContext<WhisperContextType | undefined>(undefined);
 
-const audioRecorderPlayer = new AudioRecorderPlayer();
-
 export const WhisperProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false); // Can be kept for compatibility
   const [transcription, setTranscription] = useState('');
+  const [realtimeText, setRealtimeText] = useState('');
   const [isWhisperLoaded, setIsWhisperLoaded] = useState(whisperService.isLoaded());
+  const stopRealtimeRef = useRef<(() => Promise<void>) | null>(null);
 
   const requestPermissions = async () => {
     if (Platform.OS === 'android') {
@@ -73,42 +72,49 @@ export const WhisperProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [loadWhisperModel]);
 
   const startRecording = async () => {
-    await requestPermissions();
-    const path = Platform.select({
-      ios: 'whisper_audio.m4a',
-      android: `${RNFS.CachesDirectoryPath}/whisper_audio.mp4`,
-    });
-
-    const uri = await audioRecorderPlayer.startRecorder(path);
-    audioRecorderPlayer.addRecordBackListener((e) => {
+    if (!whisperService.isLoaded()) {
+      console.error('[WhisperContext] Whisper model not loaded');
       return;
-    });
+    }
+    
+    await requestPermissions();
     setIsRecording(true);
+    setRealtimeText('');
     setTranscription('');
-    console.log('[WhisperContext] Recording started:', uri);
+    
+    try {
+      const stop = await whisperService.transcribeRealtime(
+        (text) => {
+          setRealtimeText(text);
+        },
+        (finalText) => {
+          setRealtimeText(finalText);
+          setTranscription(finalText);
+          setIsRecording(false);
+        }
+      );
+      stopRealtimeRef.current = stop;
+      console.log('[WhisperContext] Realtime recording started');
+    } catch (err) {
+      console.error('[WhisperContext] Failed to start realtime transcription:', err);
+      setIsRecording(false);
+    }
   };
 
   const stopRecording = async (): Promise<string> => {
-    const result = await audioRecorderPlayer.stopRecorder();
-    audioRecorderPlayer.removeRecordBackListener();
+    if (stopRealtimeRef.current) {
+      try {
+        await stopRealtimeRef.current();
+      } catch (err) {
+        console.error('[WhisperContext] Error stopping realtime transcription:', err);
+      }
+      stopRealtimeRef.current = null;
+    }
+    
     setIsRecording(false);
-    console.log('[WhisperContext] Recording stopped:', result);
-
-    if (!whisperService.isLoaded()) {
-      return 'Whisper model not loaded';
-    }
-
-    try {
-      setIsTranscribing(true);
-      const text = await whisperService.transcribe(result);
-      setTranscription(text);
-      return text;
-    } catch (err) {
-      console.error('[WhisperContext] Transcription error:', err);
-      return 'Transcription failed';
-    } finally {
-      setIsTranscribing(false);
-    }
+    setTranscription(realtimeText);
+    console.log('[WhisperContext] Realtime recording stopped. Text:', realtimeText);
+    return realtimeText;
   };
 
   return (
@@ -116,6 +122,7 @@ export const WhisperProvider: React.FC<{ children: ReactNode }> = ({ children })
       isRecording,
       isTranscribing,
       transcription,
+      realtimeText,
       startRecording,
       stopRecording,
       isWhisperLoaded,

@@ -37,9 +37,16 @@ export const ModelCard: React.FC<ModelCardProps> = ({
         </View>
         <View style={styles.info}>
           <Text style={styles.name}>{model.name}</Text>
-          <Text style={styles.size}>{model.size}</Text>
+          <View style={styles.sizeRow}>
+            <Text style={styles.size}>{model.size}</Text>
+            {model.isDefault && (
+              <View style={styles.defaultBadge}>
+                <Text style={styles.defaultBadgeText}>SYSTEM DEFAULT</Text>
+              </View>
+            )}
+          </View>
         </View>
-        {isDownloaded && !isLoading && (
+        {isDownloaded && !isLoading && !model.isDefault && (
            <TouchableOpacity onPress={onDelete} style={styles.deleteButton}>
             <Trash2 color={theme.colors.error} size={18} />
           </TouchableOpacity>
@@ -133,6 +140,24 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     marginTop: 2,
     fontWeight: '600',
+  },
+  sizeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  defaultBadge: {
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 2,
+  },
+  defaultBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: theme.colors.secondary,
+    letterSpacing: 0.5,
   },
   description: {
     fontSize: 14,
