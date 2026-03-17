@@ -1,3 +1,4 @@
+// @ts-ignore
 import { initWhisper, WhisperContext } from 'whisper.rn';
 import RNFS from 'react-native-fs';
 

@@ -18,6 +18,7 @@ import { ChatBubble } from '../components/ChatBubble';
 import { ChatMenu } from '../components/ChatMenu';
 import { Send, Menu, Trash2, Cpu, Mic, Volume2, Square } from 'lucide-react-native';
 import { useWhisper } from '../hooks/useWhisper';
+import { useTTS } from '../hooks/useTTS';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../styles/theme';
 
@@ -27,6 +28,7 @@ export const ChatScreen = ({ navigation }: any) => {
 
   const { messages, isGenerating, isLoaded, error, sendMessage, currentModelName, isLoadingModel, stopGeneration } = useLlama();
   const { isRecording, isTranscribing, startRecording, stopRecording, isWhisperLoaded, realtimeText } = useWhisper();
+  const { isSpeaking } = useTTS();
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -58,19 +60,82 @@ export const ChatScreen = ({ navigation }: any) => {
     }
   };
 
-  const handleMicPress = async () => {
-    if (isRecording) {
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isStartingRecordingRef = useRef(false);
+
+  // Monitor realtime text for silence to autosend in voice mode
+  useEffect(() => {
+    if (!isVoiceMode || !isRecording || !realtimeText.trim()) return;
+
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+
+    debounceTimerRef.current = setTimeout(async () => {
+      console.log('[ChatScreen] Silence detected, auto-sending message...');
       const text = await stopRecording();
       if (text && text !== 'Transcription failed' && text !== 'Whisper model not loaded') {
-        setInput(prev => prev + (prev ? ' ' : '') + text);
+        const finalInput = input + (input && text ? ' ' : '') + text;
+        if (finalInput.trim() && isLoaded && !isGenerating) {
+          sendMessage(finalInput);
+          setInput('');
+        } else {
+          setInput(finalInput);
+        }
       }
-    } else {
-      if (!isWhisperLoaded) {
-        Alert.alert('Whisper Not Ready', 'Please load a Whisper model from the Brain Store first.');
-        return;
-      }
-      await startRecording();
+    }, 2000);
+
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, [realtimeText, isVoiceMode, isRecording, input, isLoaded, isGenerating, sendMessage, stopRecording]);
+
+  // Handle continuous conversation: automatically listen after AI speaks
+  useEffect(() => {
+    if (!isVoiceMode) return;
+
+    // AI is fully done generated and speaking, and we aren't currently recording or starting to record
+    if (!isGenerating && !isSpeaking && !isRecording && isLoaded && isWhisperLoaded && !isStartingRecordingRef.current) {
+       console.log('[ChatScreen] AI finished speaking (or voice mode started). Starting listening...');
+       isStartingRecordingRef.current = true;
+       startRecording().finally(() => {
+         // Release lock after a short delay to ensure state has settled
+         setTimeout(() => {
+           isStartingRecordingRef.current = false;
+         }, 500);
+       });
     }
+  }, [isGenerating, isSpeaking, isVoiceMode, isRecording, isLoaded, isWhisperLoaded, startRecording]);
+
+  const handleMicPress = async () => {
+    // 1. If currently recording, stop and add text, toggle voice mode OFF
+    if (isRecording) {
+      setIsVoiceMode(false);
+      const text = await stopRecording();
+      if (text && text !== 'Transcription failed' && text !== 'Whisper model not loaded') {
+        const finalInput = input + (input && text ? ' ' : '') + text;
+        if (finalInput.trim() && isLoaded && !isGenerating) {
+          sendMessage(finalInput);
+          setInput('');
+        } else {
+          setInput(finalInput);
+        }
+      }
+      return;
+    }
+
+    // 2. If AI is generating, interrupt it
+    if (isGenerating) {
+      await stopGeneration();
+    }
+
+    // 3. Start listening & entering Voice Mode
+    if (!isWhisperLoaded) {
+      Alert.alert('Whisper Not Ready', 'Please load a Whisper model from the Brain Store first.');
+      return;
+    }
+    
+    setIsVoiceMode(true);
+    // We do NOT call startRecording() here anymore; the useEffect will handle it safely.
   };
 
   const displayInput = isRecording && realtimeText 
@@ -176,7 +241,7 @@ export const ChatScreen = ({ navigation }: any) => {
                   isRecording && styles.micButtonActive
                 ]}
                 onPress={handleMicPress}
-                disabled={!isLoaded || isGenerating || isTranscribing}
+                disabled={!isLoaded || isTranscribing}
               >
                 {isTranscribing ? (
                   <ActivityIndicator color={theme.colors.primary} size="small" />

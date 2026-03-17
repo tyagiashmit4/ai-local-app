@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, FlatList, StyleSheet, Text, Alert, LayoutAnimation, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { ModelCard } from '../components/ModelCard';
 import { RECOMMENDED_MODELS, downloadModel, ModelInfo } from '../api/huggingface';
-import { listModels, getModelPath, deleteModel } from '../utils/fileSystem';
+import { listModels, getModelPath, deleteModel, loadSettings, saveSettings } from '../utils/fileSystem';
 import { useLlama } from '../hooks/useLlama';
 import { useWhisper } from '../hooks/useWhisper';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -55,6 +55,12 @@ export const ModelScreen = ({ navigation }: any) => {
     try {
       if (model.filename.endsWith('.bin')) {
         await loadWhisperModel(path);
+        
+        // Save the chosen Whisper model to settings
+        const settings = await loadSettings() || {};
+        settings.lastWhisperModelPath = path;
+        await saveSettings(settings);
+
         Alert.alert('Success', 'Whisper model loaded successfully');
       } else {
         await loadModel(path);

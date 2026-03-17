@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode, use
 import { llamaService, Message } from '../services/LlamaService';
 import { loadSettings, saveSettings, saveChat, listChats, loadChat, deleteChat, getModelPath, listModels } from '../utils/fileSystem';
 import { RECOMMENDED_MODELS, downloadModel } from '../api/huggingface';
+import { ttsService } from '../services/TTSService';
 
 export interface ChatSession {
   id: string;
@@ -209,8 +210,20 @@ export const LlamaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setMessages(prev => [...prev, assistantMessage]);
 
     try {
+      let sentenceBuffer = '';
       await llamaService.generateCompletion(newMessages, (token) => {
         assistantContent += token;
+        sentenceBuffer += token;
+
+        // Check if we hit punctuation indicating end of a phrase/sentence
+        if (/([.!?\n]+)\s*$/.test(token) || (sentenceBuffer.length > 50 && /([,;]+)\s*$/.test(token))) {
+          const sentence = sentenceBuffer.trim();
+          if (sentence) {
+            ttsService.speak(sentence);
+          }
+          sentenceBuffer = '';
+        }
+
         setMessages(prev => {
           const updated = [...prev];
           updated[updated.length - 1] = { 
@@ -220,6 +233,11 @@ export const LlamaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           return updated;
         });
       });
+
+      // Speak any remaining text in the buffer
+      if (sentenceBuffer.trim()) {
+        ttsService.speak(sentenceBuffer.trim());
+      }
     } catch (err: any) {
       setError(err.message || 'Error during generation');
     } finally {
@@ -232,6 +250,8 @@ export const LlamaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       await llamaService.stopGeneration();
       setIsGenerating(false);
     }
+    // Always stop TTS when interrupting
+    ttsService.stop();
   }, [isGenerating]);
 
   return (
