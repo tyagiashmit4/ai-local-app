@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@react-native-community/netinfo": "^12.0.1",
+    "@react-native-documents/picker": "^12.0.1",
     "@react-native/new-app-screen": "0.84.0",
     "@react-navigation/native": "^7.1.31",
     "@react-navigation/stack": "^7.8.2",
@@ -18,6 +19,8 @@
     "docx": "^9.6.0",
     "llama.rn": "^0.11.2",
     "lucide-react-native": "^0.575.0",
+    "mammoth": "^1.12.0",
+    "pdfjs-dist": "2.16.105",
     "react": "19.2.3",
     "react-native": "0.84.0",
     "react-native-audio-recorder-player": "^4.5.0",

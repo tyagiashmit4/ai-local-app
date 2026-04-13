@@ -19,7 +19,7 @@ interface LlamaContextType {
   isLoaded: boolean;
   error: string | null;
   loadModel: (path: string) => Promise<void>;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, shouldSpeak?: boolean) => Promise<void>;
   createNewChat: () => void;
   switchChat: (id: string) => void;
   deleteSessions: (ids: string[]) => Promise<void>;
@@ -169,18 +169,8 @@ export const LlamaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           await loadModel(targetModelPath);
         }
 
-        // 3. Load active session
-        const lastActiveId = settings?.activeSessionId;
-        if (lastActiveId && loadedSessions.find(s => s.id === lastActiveId)) {
-          const session = loadedSessions.find(s => s.id === lastActiveId);
-          setActiveSessionId(lastActiveId);
-          setMessages(session?.messages || []);
-        } else if (loadedSessions.length > 0) {
-          setActiveSessionId(loadedSessions[0].id);
-          setMessages(loadedSessions[0].messages);
-        } else {
-          await createNewChat();
-        }
+        // 3. Always start with a new chat on app launch
+        await createNewChat();
       } catch (err) {
         console.error('[LlamaContext] Initialization failed:', err);
       }
@@ -188,7 +178,7 @@ export const LlamaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     init();
   }, [loadModel, loadSessions, createNewChat]);
 
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string, shouldSpeak: boolean = false) => {
     if (!text.trim() || isGenerating) return;
 
     const userMessage: Message = { role: 'user', content: text };
@@ -218,7 +208,7 @@ export const LlamaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         // Check if we hit punctuation indicating end of a phrase/sentence
         if (/([.!?\n]+)\s*$/.test(token) || (sentenceBuffer.length > 50 && /([,;]+)\s*$/.test(token))) {
           const sentence = sentenceBuffer.trim();
-          if (sentence) {
+          if (sentence && shouldSpeak) {
             ttsService.speak(sentence);
           }
           sentenceBuffer = '';
@@ -235,7 +225,7 @@ export const LlamaProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       });
 
       // Speak any remaining text in the buffer
-      if (sentenceBuffer.trim()) {
+      if (sentenceBuffer.trim() && shouldSpeak) {
         ttsService.speak(sentenceBuffer.trim());
       }
     } catch (err: any) {

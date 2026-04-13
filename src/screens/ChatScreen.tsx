@@ -14,23 +14,38 @@ import {
   Keyboard
 } from 'react-native';
 import { useLlama } from '../hooks/useLlama';
-import { ChatBubble } from '../components/ChatBubble';
-import { ChatMenu } from '../components/ChatMenu';
-import { Send, Menu, Trash2, Cpu, Mic, Volume2, Square } from 'lucide-react-native';
 import { useWhisper } from '../hooks/useWhisper';
 import { useTTS } from '../hooks/useTTS';
+import { ChatBubble } from '../components/ChatBubble';
+import { ChatMenu } from '../components/ChatMenu';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../styles/theme';
+import { VoiceWaveAnimation } from '../components/VoiceWaveAnimation';
+import { ttsService } from '../services/TTSService';
+import { documentService, ParsedDocument } from '../services/DocumentService';
+import { Cpu, FileText, Menu, Mic, Paperclip, Send, Square, X } from 'lucide-react-native';
+
 
 export const ChatScreen = ({ navigation }: any) => {
   const [input, setInput] = useState('');
   const [isMenuVisible, setIsMenuVisible] = useState(false);
 
   const { messages, isGenerating, isLoaded, error, sendMessage, currentModelName, isLoadingModel, stopGeneration } = useLlama();
-  const { isRecording, isTranscribing, startRecording, stopRecording, isWhisperLoaded, realtimeText } = useWhisper();
+  const { isRecording, isTranscribing, startRecording, stopRecording, pauseRecording, resumeRecording, isWhisperLoaded, realtimeText, isPaused } = useWhisper();
   const { isSpeaking } = useTTS();
 
   const flatListRef = useRef<FlatList>(null);
+
+  // ── Voice Mode State ──
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isTransitioningRef = useRef(false);
+  const prevRealtimeTextRef = useRef('');
+  const hasSentFirstMessageRef = useRef(false); // tracks if we've sent at least one message in this voice session
+
+  // ── Document Attachment State ──
+  const [attachedDoc, setAttachedDoc] = useState<ParsedDocument | null>(null);
+  const [isAttaching, setIsAttaching] = useState(false);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -41,7 +56,7 @@ export const ChatScreen = ({ navigation }: any) => {
     }
   }, [messages]);
 
-  // 🔥 Keyboard auto scroll fix
+  // Keyboard auto scroll fix
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => {
       flatListRef.current?.scrollToEnd({ animated: true });
@@ -49,24 +64,49 @@ export const ChatScreen = ({ navigation }: any) => {
     return () => show.remove();
   }, []);
 
-  const handleSend = () => {
-    const finalInput = isRecording ? displayInput : input;
-    if (finalInput.trim() && isLoaded && !isGenerating) {
-      sendMessage(finalInput);
-      setInput('');
-      if (isRecording) {
-        stopRecording();
+  // ── Restart mic fresh when AI finishes (clears any AI audio that was captured) ──
+  useEffect(() => {
+    if (!isVoiceMode) return;
+    if (isTransitioningRef.current) return;
+
+    // AI just finished and mic is not active — restart recording fresh
+    if (!isGenerating && !isSpeaking && !isRecording && isWhisperLoaded && hasSentFirstMessageRef.current) {
+      console.log('[ChatScreen] AI finished. Restarting mic fresh...');
+      isTransitioningRef.current = true;
+      // Delay to let TTS audio fully stop before mic picks up
+      setTimeout(() => {
+        startRecording().finally(() => {
+          setTimeout(() => {
+            isTransitioningRef.current = false;
+          }, 500);
+        });
+      }, 800);
+    }
+  }, [isGenerating, isSpeaking, isRecording, isVoiceMode, isWhisperLoaded, startRecording]);
+
+  // ── Interrupt-on-speak: if user speaks while AI is talking, stop AI immediately ──
+  useEffect(() => {
+    if (!isVoiceMode || !isRecording) return;
+    if (!realtimeText.trim()) return;
+    
+    // If AI is still generating or speaking, interrupt it
+    if (isGenerating || isSpeaking) {
+      console.log('[ChatScreen] User spoke while AI is responding — interrupting AI');
+      if (isGenerating) {
+        stopGeneration();
+      }
+      if (isSpeaking) {
+        ttsService.stop();
       }
     }
-  };
+  }, [realtimeText, isVoiceMode, isRecording, isGenerating, isSpeaking, stopGeneration]);
 
-  const [isVoiceMode, setIsVoiceMode] = useState(false);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const isStartingRecordingRef = useRef(false);
-
-  // Monitor realtime text for silence to autosend in voice mode
+  // ── Silence detection: auto-send after 1.5s of no new speech ──
   useEffect(() => {
     if (!isVoiceMode || !isRecording || !realtimeText.trim()) return;
+
+    // Don't auto-send while AI is still generating (user just interrupted, let them finish speaking)
+    if (isGenerating) return;
 
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
 
@@ -74,78 +114,106 @@ export const ChatScreen = ({ navigation }: any) => {
       console.log('[ChatScreen] Silence detected, auto-sending message...');
       const text = await stopRecording();
       if (text && text !== 'Transcription failed' && text !== 'Whisper model not loaded') {
-        const finalInput = input + (input && text ? ' ' : '') + text;
-        if (finalInput.trim() && isLoaded && !isGenerating) {
-          sendMessage(finalInput);
-          setInput('');
-        } else {
-          setInput(finalInput);
+        if (text.trim() && isLoaded) {
+          hasSentFirstMessageRef.current = true;
+          sendMessage(text.trim(), true);
         }
       }
-    }, 2000);
+    }, 1500);
 
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
-  }, [realtimeText, isVoiceMode, isRecording, input, isLoaded, isGenerating, sendMessage, stopRecording]);
+  }, [realtimeText, isVoiceMode, isRecording, isLoaded, isGenerating, sendMessage, stopRecording]);
 
-  // Handle continuous conversation: automatically listen after AI speaks
-  useEffect(() => {
-    if (!isVoiceMode) return;
-
-    // AI is fully done generated and speaking, and we aren't currently recording or starting to record
-    if (!isGenerating && !isSpeaking && !isRecording && isLoaded && isWhisperLoaded && !isStartingRecordingRef.current) {
-       console.log('[ChatScreen] AI finished speaking (or voice mode started). Starting listening...');
-       isStartingRecordingRef.current = true;
-       startRecording().finally(() => {
-         // Release lock after a short delay to ensure state has settled
-         setTimeout(() => {
-           isStartingRecordingRef.current = false;
-         }, 500);
-       });
-    }
-  }, [isGenerating, isSpeaking, isVoiceMode, isRecording, isLoaded, isWhisperLoaded, startRecording]);
-
+  // ── Handle entering/exiting voice mode via mic button ──
   const handleMicPress = async () => {
-    // 1. If currently recording, stop and add text, toggle voice mode OFF
-    if (isRecording) {
+    // If already in voice mode, exit it
+    if (isVoiceMode) {
+      console.log('[ChatScreen] Exiting voice mode');
       setIsVoiceMode(false);
-      const text = await stopRecording();
-      if (text && text !== 'Transcription failed' && text !== 'Whisper model not loaded') {
-        const finalInput = input + (input && text ? ' ' : '') + text;
-        if (finalInput.trim() && isLoaded && !isGenerating) {
-          sendMessage(finalInput);
-          setInput('');
-        } else {
-          setInput(finalInput);
-        }
+      hasSentFirstMessageRef.current = false;
+      if (isRecording) {
+        await stopRecording();
+      }
+      if (isGenerating) {
+        await stopGeneration();
+      }
+      if (isSpeaking) {
+        ttsService.stop();
+      }
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
       }
       return;
     }
 
-    // 2. If AI is generating, interrupt it
-    if (isGenerating) {
-      await stopGeneration();
-    }
-
-    // 3. Start listening & entering Voice Mode
+    // Enter voice mode
     if (!isWhisperLoaded) {
       Alert.alert('Whisper Not Ready', 'Please load a Whisper model from the Brain Store first.');
       return;
     }
-    
+
+    console.log('[ChatScreen] Entering voice mode');
     setIsVoiceMode(true);
-    // We do NOT call startRecording() here anymore; the useEffect will handle it safely.
+    setInput('');
+    
+    // If AI is currently speaking, stop it
+    if (isGenerating) {
+      await stopGeneration();
+    }
+    if (isSpeaking) {
+      ttsService.stop();
+    }
+
+    // Start listening
+    await startRecording();
   };
 
-  const displayInput = isRecording && realtimeText 
-    ? input + (input ? ' ' : '') + realtimeText 
-    : input;
+  const handleSend = () => {
+    // If we have an attached document and/or input text, we can send.
+    if ((input.trim() || attachedDoc) && isLoaded && !isGenerating) {
+      let finalMessage = input.trim();
+      
+      if (attachedDoc) {
+        finalMessage = `Context from attached document "${attachedDoc.name}":\n\n${attachedDoc.text}\n\nUser Question/Input: ${finalMessage || 'Please summarize this document.'}`;
+      }
+      
+      sendMessage(finalMessage, false);
+      setInput('');
+      setAttachedDoc(null);
+    }
+  };
+
+  const handleAttach = async () => {
+    try {
+      setIsAttaching(true);
+      const doc = await documentService.pickDocument();
+      if (doc) {
+        const parsed = await documentService.extractText(doc);
+        setAttachedDoc(parsed);
+      }
+    } catch (err: any) {
+      Alert.alert('Attachment Error', err.message || 'Could not attach document.');
+    } finally {
+      setIsAttaching(false);
+    }
+  };
+
+  // Determine voice mode status text
+  const getVoiceModeStatus = () => {
+    if (isRecording && realtimeText.trim()) return 'Listening...';
+    if (isRecording) return 'Listening...';
+    if (isGenerating) return 'AI is thinking...';
+    if (isSpeaking) return 'AI is speaking...';
+    if (isPaused) return 'Waiting for AI...';
+    return 'Starting...';
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       
-      {/* 🔥 WRAP WHOLE SCREEN */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -202,13 +270,12 @@ export const ChatScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </View>
         ) : (
-          // 🔥 MAIN CHAT AREA
           <View style={{ flex: 1 }}>
 
             <FlatList
               ref={flatListRef}
               data={messages}
-              keyExtractor={(_, index) => index.toString()}
+              keyExtractor={(_: any, index: { toString: () => any; }) => index.toString()}
               renderItem={({ item }) => <ChatBubble message={item} />}
               contentContainerStyle={styles.listContent}
               keyboardShouldPersistTaps="handled"
@@ -223,48 +290,120 @@ export const ChatScreen = ({ navigation }: any) => {
               </View>
             )}
 
-            {/* 🔥 STICKY INPUT */}
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder={isLoaded ? (isRecording ? "Listening..." : "Type a prompt...") : "Waiting for model..."}
-                placeholderTextColor={theme.colors.textMuted}
-                value={displayInput}
-                onChangeText={setInput}
-                multiline
-                editable={isLoaded && !isRecording}
-              />
+            {/* ── VOICE MODE OVERLAY ── */}
+            {isVoiceMode ? (
+              <View style={styles.voiceModeContainer}>
+                {/* Realtime transcription text */}
+                {realtimeText.trim() ? (
+                  <Text style={styles.voiceTranscriptText} numberOfLines={3}>
+                    {realtimeText}
+                  </Text>
+                ) : null}
 
-              <TouchableOpacity 
-                style={[
-                  styles.micButton,
-                  isRecording && styles.micButtonActive
-                ]}
-                onPress={handleMicPress}
-                disabled={!isLoaded || isTranscribing}
-              >
-                {isTranscribing ? (
-                  <ActivityIndicator color={theme.colors.primary} size="small" />
-                ) : (
-                  <Mic color={isRecording ? theme.colors.error : theme.colors.textMuted} size={20} />
-                )}
-              </TouchableOpacity>
+                {/* Wave Animation or Status */}
+                <View style={styles.voiceWaveRow}>
+                  {isRecording ? (
+                    <VoiceWaveAnimation 
+                      isActive={true} 
+                      color={theme.colors.primary}
+                      width={160}
+                      height={50}
+                    />
+                  ) : (
+                    <VoiceWaveAnimation 
+                      isActive={false} 
+                      color={theme.colors.textMuted}
+                      width={160}
+                      height={50}
+                    />
+                  )}
+                </View>
 
-              <TouchableOpacity 
-                style={[
-                  styles.sendButton, 
-                  (!displayInput.trim() || !isLoaded) && !isGenerating && styles.sendButtonDisabled
-                ]}
-                onPress={isGenerating ? stopGeneration : handleSend}
-                disabled={(!displayInput.trim() || !isLoaded) && !isGenerating}
-              >
-                {isGenerating ? (
-                  <Square color="#FFFFFF" size={20} fill="#FFFFFF" />
-                ) : (
-                  <Send color="#FFFFFF" size={20} />
+                {/* Status Text */}
+                <Text style={[
+                  styles.voiceStatusText,
+                  (isGenerating || isSpeaking) && styles.voiceStatusAI
+                ]}>
+                  {getVoiceModeStatus()}
+                </Text>
+
+                {/* Exit Voice Mode Button */}
+                <TouchableOpacity 
+                  style={styles.voiceExitButton}
+                  onPress={handleMicPress}
+                >
+                  <X color="#FFFFFF" size={24} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              /* ── NORMAL INPUT BAR ── */
+              <View>
+                {/* ATTACHMENT PREVIEW */}
+                {attachedDoc && (
+                  <View style={styles.attachmentPreview}>
+                    <FileText color={theme.colors.primary} size={20} />
+                    <View style={styles.attachmentTextContainer}>
+                      <Text style={styles.attachmentName} numberOfLines={1}>{attachedDoc.name}</Text>
+                      <Text style={styles.attachmentType}>{Math.round(attachedDoc.text.length / 1024)}KB text extracted</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => setAttachedDoc(null)} style={styles.attachmentRemove}>
+                      <X color={theme.colors.textMuted} size={18} />
+                    </TouchableOpacity>
+                  </View>
                 )}
-              </TouchableOpacity>
-            </View>
+
+                <View style={styles.inputContainer}>
+                  <TouchableOpacity 
+                    style={styles.attachButton}
+                    onPress={handleAttach}
+                    disabled={!isLoaded || isAttaching}
+                  >
+                    {isAttaching ? (
+                      <ActivityIndicator color={theme.colors.primary} size="small" />
+                    ) : (
+                      <Paperclip color={theme.colors.textMuted} size={22} style={{ transform: [{ rotate: '45deg' }] }} />
+                    )}
+                  </TouchableOpacity>
+
+                  <TextInput
+                    style={styles.input}
+                    placeholder={isLoaded ? "Type a prompt..." : "Waiting for model..."}
+                    placeholderTextColor={theme.colors.textMuted}
+                    value={input}
+                    onChangeText={setInput}
+                    multiline
+                    editable={isLoaded}
+                  />
+
+                <TouchableOpacity 
+                  style={styles.micButton}
+                  onPress={handleMicPress}
+                  disabled={!isLoaded || isTranscribing}
+                >
+                  {isTranscribing ? (
+                    <ActivityIndicator color={theme.colors.primary} size="small" />
+                  ) : (
+                    <Mic color={theme.colors.textMuted} size={20} />
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[
+                    styles.sendButton, 
+                    (!input.trim() || !isLoaded) && !isGenerating && styles.sendButtonDisabled
+                  ]}
+                  onPress={isGenerating ? stopGeneration : handleSend}
+                  disabled={(!input.trim() || !isLoaded) && !isGenerating}
+                >
+                  {isGenerating ? (
+                    <Square color="#FFFFFF" size={20} fill="#FFFFFF" />
+                  ) : (
+                    <Send color="#FFFFFF" size={20} />
+                  )}
+                </TouchableOpacity>
+              </View>
+             </View>
+            )}
 
           </View>
         )}
@@ -319,12 +458,18 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
+    paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.md,
     backgroundColor: theme.colors.surface,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.05)',
     zIndex: 100,
+  },
+  attachButton: {
+    width: 45,
+    height: 45,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   input: {
     flex: 1,
@@ -336,7 +481,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 16,
     color: theme.colors.text,
-    marginRight: 10,
+    marginRight: 6,
+    marginLeft: 4,
   },
   sendButton: {
     width: 45,
@@ -356,10 +502,33 @@ const styles = StyleSheet.create({
     borderRadius: theme.borderRadius.md,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 8,
+    marginRight: 4,
   },
-  micButtonActive: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  attachmentPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  attachmentTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  attachmentName: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  attachmentType: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  attachmentRemove: {
+    padding: 8,
   },
   emptyState: {
     flex: 1,
@@ -430,5 +599,53 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 8,
     textAlign: 'center',
+  },
+  // ── Voice Mode Styles ──
+  voiceModeContainer: {
+    backgroundColor: theme.colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    paddingVertical: 20,
+    paddingHorizontal: theme.spacing.md,
+    alignItems: 'center',
+    minHeight: 160,
+  },
+  voiceTranscriptText: {
+    color: theme.colors.text,
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    fontStyle: 'italic',
+    opacity: 0.9,
+  },
+  voiceWaveRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 8,
+  },
+  voiceStatusText: {
+    color: theme.colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 8,
+    letterSpacing: 0.5,
+  },
+  voiceStatusAI: {
+    color: theme.colors.secondary,
+  },
+  voiceExitButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: theme.colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 16,
+    shadowColor: theme.colors.error,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
 });

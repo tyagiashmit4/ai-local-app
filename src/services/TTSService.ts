@@ -14,7 +14,7 @@ class TTSService {
       await Tts.getInitStatus();
       Tts.setDefaultRate(0.5);
       Tts.setDefaultPitch(1.0);
-      Tts.setDucking(true); // Duck other audio while speaking
+      Tts.setDucking(false); // Disable ducking so it doesn't try to kill microphone audio focus
       
       // Optionally listen to events
       Tts.addEventListener('tts-start', () => {
